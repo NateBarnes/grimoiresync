@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 
 # Characters not allowed in filenames
 _INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
-_DATE_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\s*[-–—]\s*")
+_DATE_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[\s\-–—]")
 
 
 def make_filename(doc: GranolaDocument) -> str:
