@@ -94,9 +94,8 @@ def assemble_note(
     include_transcript: bool = False,
 ) -> str:
     """Assemble the complete markdown note."""
-    frontmatter = build_frontmatter(doc)
     body = build_body(doc, include_panels=include_panels, include_transcript=include_transcript)
-    return frontmatter + "\n\n" + body + "\n"
+    return body + "\n"
 
 
 def write_note(
