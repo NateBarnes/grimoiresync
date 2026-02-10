@@ -87,7 +87,10 @@ class _HtmlToMarkdown(html.parser.HTMLParser):
 
     def get_markdown(self) -> str:
         text = "".join(self._parts)
-        text = re.sub(r"\n{3,}", "\n\n", text)
+        # Collapse all runs of blank lines to a single newline
+        text = re.sub(r"\n{2,}", "\n", text)
+        # Re-add a blank line before headings for readability
+        text = re.sub(r"\n(#{1,6} )", r"\n\n\1", text)
         return text.strip()
 
 
