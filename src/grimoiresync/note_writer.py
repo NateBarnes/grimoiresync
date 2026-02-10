@@ -59,18 +59,16 @@ def build_body(
         attendee_lines = [f"- {a.name}" for a in doc.attendees]
         sections.append("## Attendees\n\n" + "\n".join(attendee_lines))
 
-    # Notes
-    notes_md = doc.notes_markdown
-    if not notes_md and doc.notes_prosemirror:
-        notes_md = prosemirror_to_markdown(doc.notes_prosemirror)
-
-    if notes_md:
-        sections.append("## Notes\n\n" + notes_md.strip())
-
-    # AI Panels
+    # AI Panels (preferred) or user notes (fallback)
     if include_panels and doc.panels:
         for panel in doc.panels:
             sections.append(f"## {panel.title}\n\n{panel.content_markdown.strip()}")
+    else:
+        notes_md = doc.notes_markdown
+        if not notes_md and doc.notes_prosemirror:
+            notes_md = prosemirror_to_markdown(doc.notes_prosemirror)
+        if notes_md:
+            sections.append(notes_md.strip())
 
     # Transcript
     if include_transcript and doc.transcript:
