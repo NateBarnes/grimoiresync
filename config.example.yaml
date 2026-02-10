@@ -1,0 +1,23 @@
+# GrimoireSync configuration
+# Copy to ~/.config/grimoiresync/config.yaml
+
+# Required: path to your Obsidian vault
+vault_path: ~/Documents/ObsidianVault
+
+# Subfolder within the vault for meeting notes (default: "Meetings")
+notes_subfolder: Meetings
+
+# Path to Granola's cache file (default: ~/Library/Application Support/Granola/cache-v3.json)
+# granola_cache_path: ~/Library/Application Support/Granola/cache-v3.json
+
+# Include AI-generated summary panels (default: true)
+include_panels: true
+
+# Include raw transcript in a collapsible section (default: false)
+include_transcript: false
+
+# Auto-generate [[wikilinks]] based on existing vault content (default: true)
+auto_wikilinks: true
+
+# Minimum term length for wikilink injection (default: 3)
+min_wikilink_length: 3

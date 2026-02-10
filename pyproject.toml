@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "grimoiresync"
+version = "0.1.0"
+description = "Sync Granola meeting notes to Obsidian with auto-wikilinks"
+requires-python = ">=3.12"
+dependencies = [
+    "watchdog>=4.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+grimoiresync = "grimoiresync.cli:main"
