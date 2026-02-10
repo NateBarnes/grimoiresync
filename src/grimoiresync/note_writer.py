@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html as html_mod
+import html.parser
 import logging
 import re
 from pathlib import Path
@@ -12,6 +14,92 @@ from .models import GranolaDocument
 from .prosemirror import prosemirror_to_markdown
 
 log = logging.getLogger(__name__)
+
+
+class _HtmlToMarkdown(html.parser.HTMLParser):
+    """Convert HTML to markdown by walking the tag structure."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._parts: list[str] = []
+        self._list_stack: list[tuple[str, int]] = []  # (tag, counter)
+        self._href: str | None = None
+        self._link_text: list[str] = []
+        self._in_link = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        match tag:
+            case "h1" | "h2" | "h3" | "h4" | "h5" | "h6":
+                level = int(tag[1])
+                self._parts.append(f"\n{'#' * level} ")
+            case "ul":
+                self._list_stack.append(("ul", 0))
+            case "ol":
+                self._list_stack.append(("ol", 0))
+            case "li":
+                if self._list_stack:
+                    list_tag, counter = self._list_stack[-1]
+                    counter += 1
+                    self._list_stack[-1] = (list_tag, counter)
+                    indent = "  " * (len(self._list_stack) - 1)
+                    prefix = f"{counter}." if list_tag == "ol" else "-"
+                    self._parts.append(f"\n{indent}{prefix} ")
+            case "a":
+                href = dict(attrs).get("href", "")
+                self._href = href
+                self._in_link = True
+                self._link_text = []
+            case "hr":
+                self._parts.append("\n\n---\n")
+            case "p":
+                self._parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        match tag:
+            case "h1" | "h2" | "h3" | "h4" | "h5" | "h6":
+                self._parts.append("\n")
+            case "ul" | "ol":
+                if self._list_stack:
+                    self._list_stack.pop()
+                if not self._list_stack:
+                    self._parts.append("\n")
+            case "a":
+                text = "".join(self._link_text)
+                self._parts.append(f"[{text}]({self._href})")
+                self._in_link = False
+                self._href = None
+            case "p":
+                self._parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._in_link:
+            self._link_text.append(data)
+        else:
+            self._parts.append(data)
+
+    def handle_entityref(self, name: str) -> None:
+        char = html_mod.unescape(f"&{name};")
+        self.handle_data(char)
+
+    def handle_charref(self, name: str) -> None:
+        char = html_mod.unescape(f"&#{name};")
+        self.handle_data(char)
+
+    def get_markdown(self) -> str:
+        text = "".join(self._parts)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
+
+
+def html_to_markdown(text: str) -> str:
+    """Convert HTML tags found in Granola panel content to markdown."""
+    # Quick check: if no HTML tags, return as-is
+    if "<" not in text:
+        return text
+
+    parser = _HtmlToMarkdown()
+    parser.feed(text)
+    return parser.get_markdown()
 
 # Characters not allowed in filenames
 _INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -62,7 +150,8 @@ def build_body(
     # AI Panels (preferred) or user notes (fallback)
     if include_panels and doc.panels:
         for panel in doc.panels:
-            sections.append(f"## {panel.title}\n\n{panel.content_markdown.strip()}")
+            content = html_to_markdown(panel.content_markdown.strip())
+            sections.append(f"## {panel.title}\n\n{content}")
     else:
         notes_md = doc.notes_markdown
         if not notes_md and doc.notes_prosemirror:
