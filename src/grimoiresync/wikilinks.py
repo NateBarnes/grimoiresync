@@ -43,7 +43,7 @@ def scan_vault_terms(vault_path: Path, min_length: int = 3) -> dict[str, str]:
             if len(target) >= min_length:
                 terms.setdefault(target.lower(), target)
 
-    log.info("Scanned vault: found %d unique terms", len(terms))
+    log.debug("Scanned vault: found %d unique terms", len(terms))
     return terms
 
 

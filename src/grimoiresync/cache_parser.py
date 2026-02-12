@@ -41,7 +41,7 @@ def parse_cache(cache_path: Path) -> list[GranolaDocument]:
         except Exception:
             log.warning("Failed to parse document %s", doc_id, exc_info=True)
 
-    log.info("Parsed %d documents from cache", len(results))
+    log.debug("Parsed %d documents from cache", len(results))
     return results
 
 

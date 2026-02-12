@@ -28,7 +28,7 @@ def run_sync(
 
     documents = parse_cache(cache_path)
     if not documents:
-        log.info("No documents found in cache")
+        log.debug("No documents found in cache")
         return 0
 
     # Filter to only documents that need syncing
@@ -37,10 +37,10 @@ def run_sync(
     ]
 
     if not to_sync:
-        log.info("All %d documents are up to date", len(documents))
+        log.debug("All %d documents are up to date", len(documents))
         return 0
 
-    log.info("%d of %d documents need syncing", len(to_sync), len(documents))
+    log.debug("%d of %d documents need syncing", len(to_sync), len(documents))
 
     # Scan vault for wikilink terms (only if enabled)
     terms: dict[str, str] = {}
