@@ -12,5 +12,8 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
+[project.optional-dependencies]
+test = ["pytest>=8.0", "pytest-cov>=5.0"]
+
 [project.scripts]
 grimoiresync = "grimoiresync.cli:main"
