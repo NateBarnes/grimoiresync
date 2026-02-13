@@ -11,4 +11,5 @@ venv/
 *.log
 .mypy_cache/
 .pytest_cache/
+.coverage
 config.yaml
