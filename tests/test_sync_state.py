@@ -110,6 +110,33 @@ class TestRecordSync:
         assert p.exists()
 
 
+class TestClear:
+    def test_clear_resets_state_and_saves(self, tmp_path):
+        p = tmp_path / "state.json"
+        data = {"d1": {"updated_at": "2024-01-01", "filename": "f.md"}}
+        p.write_text(json.dumps(data))
+        s = SyncState(state_path=p)
+        assert s._state != {}
+
+        s.clear()
+
+        assert s._state == {}
+        saved = json.loads(p.read_text())
+        assert saved == {}
+
+    def test_clear_makes_all_docs_need_sync(self, tmp_path):
+        p = tmp_path / "state.json"
+        dt = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        data = {"d1": {"updated_at": dt.isoformat()}}
+        p.write_text(json.dumps(data))
+        s = SyncState(state_path=p)
+        assert s.needs_sync("d1", dt) is False
+
+        s.clear()
+
+        assert s.needs_sync("d1", dt) is True
+
+
 class TestGetPreviousFilename:
     def test_existing_entry(self, tmp_path):
         p = tmp_path / "s.json"

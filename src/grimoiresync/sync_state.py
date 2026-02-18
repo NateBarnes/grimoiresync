@@ -54,6 +54,12 @@ class SyncState:
         }
         self._save()
 
+    def clear(self) -> None:
+        """Reset all sync state, forcing a full re-sync on next run."""
+        self._state = {}
+        self._save()
+        log.info("Cleared sync state")
+
     def get_previous_filename(self, doc_id: str) -> str | None:
         """Get the filename from the last sync for rename detection."""
         entry = self._state.get(doc_id)

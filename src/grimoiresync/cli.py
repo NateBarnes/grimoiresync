@@ -39,6 +39,11 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Show what would be written without writing files",
     )
+    parser.add_argument(
+        "--force", "-f",
+        action="store_true",
+        help="Clear sync state and re-sync all notes from scratch",
+    )
 
     args = parser.parse_args(argv)
 
@@ -56,6 +61,9 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(1) from None
 
     state = SyncState()
+
+    if args.force:
+        state.clear()
 
     if args.once:
         written = run_sync(config, state, dry_run=args.dry_run)

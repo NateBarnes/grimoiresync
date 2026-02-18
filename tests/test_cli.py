@@ -70,6 +70,24 @@ class TestCli:
         main(["--once", "--dry-run"])
         assert mock_run.call_args.kwargs["dry_run"] is True
 
+    @patch("grimoiresync.cli.watch")
+    @patch("grimoiresync.cli.SyncState")
+    @patch("grimoiresync.cli.run_sync", return_value=3)
+    @patch("grimoiresync.cli.load_config")
+    def test_force_calls_clear(self, mock_load, mock_run, mock_state_cls, mock_watch):
+        mock_load.return_value = MagicMock()
+        main(["--once", "--force"])
+        mock_state_cls.return_value.clear.assert_called_once()
+
+    @patch("grimoiresync.cli.watch")
+    @patch("grimoiresync.cli.SyncState")
+    @patch("grimoiresync.cli.run_sync", return_value=0)
+    @patch("grimoiresync.cli.load_config")
+    def test_no_force_does_not_clear(self, mock_load, mock_run, mock_state_cls, mock_watch):
+        mock_load.return_value = MagicMock()
+        main(["--once"])
+        mock_state_cls.return_value.clear.assert_not_called()
+
     @patch("grimoiresync.cli.load_config")
     def test_config_path_forwarded(self, mock_load):
         mock_load.side_effect = FileNotFoundError("nope")

@@ -77,12 +77,19 @@ Preview without writing files:
 grimoiresync --dry-run --once
 ```
 
+Force a full re-sync (clears sync state and re-syncs all notes):
+
+```bash
+grimoiresync --once --force
+```
+
 ### Options
 
 | Flag | Description |
 |------|-------------|
 | `--once` | Run a single sync pass and exit |
 | `--dry-run` | Show what would be written without writing files |
+| `--force`, `-f` | Clear sync state and re-sync all notes from scratch |
 | `--config`, `-c` | Path to config YAML (default: `~/.config/grimoiresync/config.yaml`) |
 | `--verbose`, `-v` | Enable debug logging |
 
