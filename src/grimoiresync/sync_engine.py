@@ -16,12 +16,11 @@ log = logging.getLogger(__name__)
 
 def find_note_by_granola_id(vault_path: Path, granola_id: str) -> Path | None:
     """Search the vault for a markdown file containing a specific granola_id."""
-    needle = f"granola_id: {granola_id}"
+    needle = f"granola_id | {granola_id}"
     for md_file in vault_path.rglob("*.md"):
         try:
-            with md_file.open("r", encoding="utf-8") as f:
-                head = f.read(1024)
-            if needle in head:
+            content = md_file.read_text(encoding="utf-8")
+            if needle in content:
                 return md_file
         except OSError:
             continue

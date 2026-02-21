@@ -8,8 +8,6 @@ import logging
 import re
 from pathlib import Path
 
-import yaml
-
 from .models import GranolaDocument
 from .prosemirror import prosemirror_to_markdown
 
@@ -122,18 +120,31 @@ def make_filename(doc: GranolaDocument) -> str:
     return f"{date_str} - {title}.md"
 
 
-def build_frontmatter(doc: GranolaDocument) -> str:
-    """Build YAML frontmatter for the document."""
-    fm: dict = {
-        "title": doc.title,
-        "date": doc.created_at.isoformat(),
-        "attendees": [a.name for a in doc.attendees] or [],
-        "granola_id": doc.id,
-        "tags": ["meeting", "granola"],
-        "aliases": [doc.title],
-    }
+def build_metadata_section(doc: GranolaDocument) -> str:
+    """Build a collapsible metadata section for the bottom of the note."""
+    rows: list[tuple[str, str]] = [
+        ("granola_id", doc.id),
+        ("date", doc.created_at.isoformat()),
+        ("attendees", ", ".join(a.name for a in doc.attendees) if doc.attendees else ""),
+        ("tags", "meeting, granola"),
+    ]
 
-    return "---\n" + yaml.dump(fm, default_flow_style=False, allow_unicode=True, sort_keys=False) + "---"
+    table_lines = ["| Key | Value |", "|---|---|"]
+    for key, value in rows:
+        table_lines.append(f"| {key} | {value} |")
+
+    table = "\n".join(table_lines)
+
+    return (
+        "---\n"
+        "\n"
+        "<details>\n"
+        "<summary>Metadata</summary>\n"
+        "\n"
+        f"{table}\n"
+        "\n"
+        "</details>"
+    )
 
 
 def build_body(
@@ -184,9 +195,9 @@ def assemble_note(
     include_transcript: bool = False,
 ) -> str:
     """Assemble the complete markdown note."""
-    frontmatter = build_frontmatter(doc)
     body = build_body(doc, include_panels=include_panels, include_transcript=include_transcript)
-    return frontmatter + "\n\n" + body + "\n"
+    metadata = build_metadata_section(doc)
+    return body + "\n\n" + metadata + "\n"
 
 
 def write_note(

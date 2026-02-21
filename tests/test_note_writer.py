@@ -12,7 +12,7 @@ from grimoiresync.models import Attendee, DocumentPanel, GranolaDocument, Transc
 from grimoiresync.note_writer import (
     assemble_note,
     build_body,
-    build_frontmatter,
+    build_metadata_section,
     html_to_markdown,
     make_filename,
     write_note,
@@ -149,17 +149,21 @@ class TestMakeFilename:
         assert "Untitled Meeting" in make_filename(doc)
 
 
-class TestBuildFrontmatter:
-    def test_produces_yaml(self, sample_document):
-        fm = build_frontmatter(sample_document)
-        assert fm.startswith("---\n")
-        assert fm.endswith("---")
-        assert "title:" in fm
-        assert "date:" in fm
-        assert "attendees:" in fm
-        assert "granola_id:" in fm
-        assert "tags:" in fm
-        assert "aliases:" in fm
+class TestBuildMetadataSection:
+    def test_produces_details_block(self, sample_document):
+        meta = build_metadata_section(sample_document)
+        assert "<details>" in meta
+        assert "<summary>Metadata</summary>" in meta
+        assert "</details>" in meta
+        assert "| granola_id | doc-123 |" in meta
+        assert "| date |" in meta
+        assert "| attendees | Alice, Bob |" in meta
+        assert "| tags | meeting, granola |" in meta
+        assert meta.startswith("---\n")
+
+    def test_no_attendees(self, minimal_document):
+        meta = build_metadata_section(minimal_document)
+        assert "| attendees |  |" in meta
 
 
 class TestBuildBody:
@@ -230,11 +234,14 @@ class TestBuildBody:
 
 
 class TestAssembleNote:
-    def test_combines_frontmatter_and_body(self, sample_document):
+    def test_body_before_metadata(self, sample_document):
         note = assemble_note(sample_document)
-        assert note.startswith("---\n")
-        assert "---\n\n" in note
-        assert note.endswith("\n")
+        assert note.endswith("</details>\n")
+        assert "<details>" in note
+        # Body content appears before the metadata section
+        body_pos = note.index("## Attendees")
+        meta_pos = note.index("<details>")
+        assert body_pos < meta_pos
 
 
 class TestWriteNote:

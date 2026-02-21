@@ -16,19 +16,19 @@ from grimoiresync.sync_engine import find_note_by_granola_id, run_sync
 class TestFindNoteByGranolaId:
     def test_found_in_first_file(self, tmp_path):
         f = tmp_path / "note.md"
-        f.write_text("---\ngranola_id: abc123\n---\nBody")
+        f.write_text("Body\n\n| granola_id | abc123 |\n")
         result = find_note_by_granola_id(tmp_path, "abc123")
         assert result == f
 
     def test_found_in_second_file(self, tmp_path):
-        (tmp_path / "a.md").write_text("---\ngranola_id: other\n---")
+        (tmp_path / "a.md").write_text("Body\n\n| granola_id | other |\n")
         b = tmp_path / "b.md"
-        b.write_text("---\ngranola_id: target\n---")
+        b.write_text("Body\n\n| granola_id | target |\n")
         result = find_note_by_granola_id(tmp_path, "target")
         assert result == b
 
     def test_not_found(self, tmp_path):
-        (tmp_path / "note.md").write_text("---\ngranola_id: other\n---")
+        (tmp_path / "note.md").write_text("Body\n\n| granola_id | other |\n")
         result = find_note_by_granola_id(tmp_path, "missing")
         assert result is None
 
@@ -38,7 +38,7 @@ class TestFindNoteByGranolaId:
 
     def test_oserror_on_open_skipped(self, tmp_path):
         f = tmp_path / "note.md"
-        f.write_text("---\ngranola_id: target\n---")
+        f.write_text("Body\n\n| granola_id | target |\n")
         f.chmod(0o000)
         try:
             result = find_note_by_granola_id(tmp_path, "target")
@@ -46,12 +46,12 @@ class TestFindNoteByGranolaId:
         finally:
             f.chmod(0o644)
 
-    def test_granola_id_past_head_limit(self, tmp_path):
+    def test_granola_id_at_end_of_large_file(self, tmp_path):
         f = tmp_path / "note.md"
-        # Place granola_id well past 1024 bytes
-        f.write_text("x" * 2000 + "\ngranola_id: target\n")
+        # granola_id well past 1024 bytes — should still be found
+        f.write_text("x" * 2000 + "\n| granola_id | target |\n")
         result = find_note_by_granola_id(tmp_path, "target")
-        assert result is None
+        assert result == f
 
 
 @pytest.fixture
