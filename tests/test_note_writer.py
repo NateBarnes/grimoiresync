@@ -232,6 +232,39 @@ class TestBuildBody:
         body = build_body(doc, include_transcript=True)
         assert "<details>" not in body
 
+    def test_chat_transcript_line_stripped(self, fixed_now):
+        """Chat transcript block (one preceding ---) is removed from panel content."""
+        panel_content = (
+            "Meeting went well.\n\n"
+            "---\n\n"
+            "Chat with meeting transcript: "
+            "[https://notes.granola.ai/t/abc-123](https://notes.granola.ai/t/abc-123)"
+        )
+        doc = GranolaDocument(
+            id="d", title="T", created_at=fixed_now, updated_at=fixed_now,
+            panels=[DocumentPanel(title="Summary", content_markdown=panel_content)],
+        )
+        body = build_body(doc, include_panels=True)
+        assert "Chat with meeting transcript" not in body
+        assert "Meeting went well." in body
+
+    def test_chat_transcript_with_trailing_hr_stripped(self, fixed_now):
+        """Chat transcript block with trailing --- is also removed."""
+        panel_content = (
+            "Meeting went well.\n\n"
+            "---\n\n"
+            "Chat with meeting transcript: "
+            "[https://notes.granola.ai/t/abc-123](https://notes.granola.ai/t/abc-123)\n\n"
+            "---"
+        )
+        doc = GranolaDocument(
+            id="d", title="T", created_at=fixed_now, updated_at=fixed_now,
+            panels=[DocumentPanel(title="Summary", content_markdown=panel_content)],
+        )
+        body = build_body(doc, include_panels=True)
+        assert "Chat with meeting transcript" not in body
+        assert "Meeting went well." in body
+
 
 class TestAssembleNote:
     def test_body_before_metadata(self, sample_document):

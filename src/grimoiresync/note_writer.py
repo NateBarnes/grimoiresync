@@ -105,6 +105,9 @@ def html_to_markdown(text: str) -> str:
 # Characters not allowed in filenames
 _INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _DATE_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[\s\-–—]")
+_CHAT_TRANSCRIPT_RE = re.compile(
+    r"\n*---\n+Chat with meeting transcript:[^\n]*(\n+---)?",
+)
 
 
 def make_filename(doc: GranolaDocument) -> str:
@@ -185,7 +188,9 @@ def build_body(
             + "\n\n</details>"
         )
 
-    return "\n\n".join(sections)
+    body = "\n\n".join(sections)
+    body = _CHAT_TRANSCRIPT_RE.sub("", body)
+    return body
 
 
 def assemble_note(
