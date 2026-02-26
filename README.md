@@ -17,7 +17,7 @@ GrimoireSync watches Granola's local cache file for changes and writes each meet
 ## Requirements
 
 - Python 3.12+
-- macOS (reads Granola's cache from `~/Library/Application Support/Granola/cache-v3.json`)
+- macOS (reads Granola's cache from `~/Library/Application Support/Granola/cache-v4.json`)
 - A Granola account with local cache enabled
 - An Obsidian vault
 

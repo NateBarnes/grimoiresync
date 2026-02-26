@@ -7,8 +7,8 @@ vault_path: ~/Documents/ObsidianVault
 # Subfolder within the vault for meeting notes (default: "Meetings")
 notes_subfolder: Meetings
 
-# Path to Granola's cache file (default: ~/Library/Application Support/Granola/cache-v3.json)
-# granola_cache_path: ~/Library/Application Support/Granola/cache-v3.json
+# Path to Granola's cache file (default: ~/Library/Application Support/Granola/cache-v4.json)
+# granola_cache_path: ~/Library/Application Support/Granola/cache-v4.json
 
 # Include AI-generated summary panels (default: true)
 include_panels: true

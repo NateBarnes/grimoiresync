@@ -8,7 +8,7 @@ from pathlib import Path
 import yaml
 
 
-_DEFAULT_CACHE_PATH = Path.home() / "Library/Application Support/Granola/cache-v3.json"
+_DEFAULT_CACHE_PATH = Path.home() / "Library/Application Support/Granola/cache-v4.json"
 _DEFAULT_CONFIG_DIR = Path.home() / ".config" / "grimoiresync"
 _DEFAULT_CONFIG_PATH = _DEFAULT_CONFIG_DIR / "config.yaml"
 

@@ -16,7 +16,7 @@ from grimoiresync.watcher import _CacheEventHandler, watch
 
 @pytest.fixture
 def watcher_config(tmp_path):
-    cache_file = tmp_path / "cache" / "cache-v3.json"
+    cache_file = tmp_path / "cache" / "cache-v4.json"
     cache_file.parent.mkdir(parents=True)
     cache_file.write_text("{}")
     return Config(
