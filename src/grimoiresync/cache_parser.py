@@ -26,6 +26,7 @@ def parse_cache(cache_path: Path) -> list[GranolaDocument]:
     meetings_meta = state.get("meetingsMetadata", {})
     transcripts = state.get("transcripts", {})
     document_panels = state.get("documentPanels", {})
+    chat_context = state.get("multiChatState", {}).get("chatContext", {})
 
     results: list[GranolaDocument] = []
 
@@ -35,7 +36,8 @@ def parse_cache(cache_path: Path) -> list[GranolaDocument]:
             continue
         try:
             granola_doc = _parse_document(
-                doc_id, doc, meetings_meta, transcripts, document_panels
+                doc_id, doc, meetings_meta, transcripts, document_panels,
+                chat_context,
             )
             results.append(granola_doc)
         except Exception:
@@ -69,12 +71,37 @@ def _parse_timestamp(value: str | int | float | None) -> datetime:
     return datetime.now(tz=timezone.utc)
 
 
+def _parse_panels_from_markdown(markdown: str) -> list[DocumentPanel]:
+    """Split a markdown string on ## headers into DocumentPanel objects."""
+    import re
+
+    panels: list[DocumentPanel] = []
+    # Split on ## headers (keeping the header text)
+    parts = re.split(r"^## (.+)$", markdown, flags=re.MULTILINE)
+
+    # parts[0] is content before first ## header
+    # Then alternating: header_text, content, header_text, content, ...
+    preamble = parts[0].strip()
+    if preamble:
+        panels.append(DocumentPanel(title="Summary", content_markdown=preamble))
+
+    # Process header/content pairs
+    for i in range(1, len(parts), 2):
+        title = parts[i].strip()
+        content = parts[i + 1].strip() if i + 1 < len(parts) else ""
+        if title and content:
+            panels.append(DocumentPanel(title=title, content_markdown=content))
+
+    return panels
+
+
 def _parse_document(
     doc_id: str,
     doc: dict,
     meetings_meta: dict,
     transcripts: dict,
     document_panels: dict,
+    chat_context: dict | None = None,
 ) -> GranolaDocument:
     """Parse a single document from the cache."""
     title = doc.get("title", "Untitled Meeting")
@@ -169,6 +196,13 @@ def _parse_document(
             )
         if panel_md:
             panels.append(DocumentPanel(title=panel_title, content_markdown=panel_md))
+
+    # v4 fallback: panels stored in multiChatState.chatContext.activeEditorMarkdown
+    if not panels and chat_context:
+        if chat_context.get("meetingId") == doc_id:
+            active_md = chat_context.get("activeEditorMarkdown", "")
+            if active_md:
+                panels = _parse_panels_from_markdown(active_md)
 
     return GranolaDocument(
         id=doc_id,

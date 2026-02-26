@@ -9,7 +9,12 @@ from datetime import datetime as real_datetime
 
 import pytest
 
-from grimoiresync.cache_parser import _parse_document, _parse_timestamp, parse_cache
+from grimoiresync.cache_parser import (
+    _parse_document,
+    _parse_panels_from_markdown,
+    _parse_timestamp,
+    parse_cache,
+)
 from grimoiresync.models import GranolaDocument
 
 
@@ -435,3 +440,117 @@ class TestParseCache:
             results = parse_cache(cache_file)
         assert len(results) == 1
         assert results[0].title == "Good"
+
+    def test_v4_chat_context_fallback(self, tmp_path):
+        """v4: panels extracted from chatContext.activeEditorMarkdown when documentPanels is empty."""
+        cache_data = {
+            "cache": json.dumps({
+                "state": {
+                    "documents": {
+                        "d1": {"title": "Meet1", "created_at": 1700000000, "updated_at": 1700000000},
+                    },
+                    "meetingsMetadata": {},
+                    "transcripts": {},
+                    "documentPanels": {},
+                    "multiChatState": {
+                        "chatContext": {
+                            "meetingId": "d1",
+                            "activeEditorMarkdown": "## Summary\n\nGood meeting.\n\n## Action Items\n\n- Do stuff",
+                        }
+                    },
+                }
+            })
+        }
+        cache_file = tmp_path / "cache.json"
+        cache_file.write_text(json.dumps(cache_data))
+        results = parse_cache(cache_file)
+        assert len(results) == 1
+        assert len(results[0].panels) == 2
+        assert results[0].panels[0].title == "Summary"
+        assert "Good meeting." in results[0].panels[0].content_markdown
+        assert results[0].panels[1].title == "Action Items"
+
+
+class TestParsePanelsFromMarkdown:
+    def test_multiple_sections(self):
+        md = "## Summary\n\nGood meeting.\n\n## Action Items\n\n- Do stuff\n- More stuff"
+        panels = _parse_panels_from_markdown(md)
+        assert len(panels) == 2
+        assert panels[0].title == "Summary"
+        assert "Good meeting." in panels[0].content_markdown
+        assert panels[1].title == "Action Items"
+        assert "- Do stuff" in panels[1].content_markdown
+
+    def test_preamble_becomes_summary(self):
+        md = "Some intro text\n\n## Details\n\nDetail content"
+        panels = _parse_panels_from_markdown(md)
+        assert len(panels) == 2
+        assert panels[0].title == "Summary"
+        assert "Some intro text" in panels[0].content_markdown
+        assert panels[1].title == "Details"
+
+    def test_empty_markdown(self):
+        panels = _parse_panels_from_markdown("")
+        assert panels == []
+
+    def test_no_headers(self):
+        md = "Just plain text with no headers"
+        panels = _parse_panels_from_markdown(md)
+        assert len(panels) == 1
+        assert panels[0].title == "Summary"
+        assert "Just plain text" in panels[0].content_markdown
+
+    def test_header_with_empty_content_skipped(self):
+        md = "## Empty Section\n\n## Has Content\n\nSome text"
+        panels = _parse_panels_from_markdown(md)
+        assert len(panels) == 1
+        assert panels[0].title == "Has Content"
+
+
+class TestV4ChatContextPanels:
+    """Tests for v4 chatContext fallback in _parse_document."""
+
+    def test_matching_meeting_id_gets_panels(self):
+        doc = {"created_at": 1700000000, "updated_at": 1700000000}
+        chat_context = {
+            "meetingId": "d1",
+            "activeEditorMarkdown": "## Summary\n\nContent here",
+        }
+        result = _parse_document("d1", doc, {}, {}, {}, chat_context)
+        assert len(result.panels) == 1
+        assert result.panels[0].title == "Summary"
+
+    def test_non_matching_meeting_id_gets_no_panels(self):
+        doc = {"created_at": 1700000000, "updated_at": 1700000000}
+        chat_context = {
+            "meetingId": "other-doc",
+            "activeEditorMarkdown": "## Summary\n\nContent here",
+        }
+        result = _parse_document("d1", doc, {}, {}, {}, chat_context)
+        assert result.panels == []
+
+    def test_v3_panels_take_priority(self):
+        doc = {"created_at": 1700000000, "updated_at": 1700000000}
+        v3_panels = {"d1": [{"title": "V3 Panel", "markdown": "V3 content"}]}
+        chat_context = {
+            "meetingId": "d1",
+            "activeEditorMarkdown": "## V4 Panel\n\nV4 content",
+        }
+        result = _parse_document("d1", doc, {}, {}, v3_panels, chat_context)
+        assert len(result.panels) == 1
+        assert result.panels[0].title == "V3 Panel"
+        assert result.panels[0].content_markdown == "V3 content"
+
+    def test_empty_active_editor_markdown(self):
+        doc = {"created_at": 1700000000, "updated_at": 1700000000}
+        chat_context = {
+            "meetingId": "d1",
+            "activeEditorMarkdown": "",
+        }
+        result = _parse_document("d1", doc, {}, {}, {}, chat_context)
+        assert result.panels == []
+
+    def test_none_chat_context(self):
+        doc = {"created_at": 1700000000, "updated_at": 1700000000}
+        result = _parse_document("d1", doc, {}, {}, {}, None)
+        assert result.panels == []
