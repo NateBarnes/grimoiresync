@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from .api_client import fetch_panels
 from .cache_parser import parse_cache
 from .config import Config
 from .note_writer import assemble_note, make_filename, write_note
@@ -39,21 +40,29 @@ def run_sync(
         log.warning("Granola cache not found at %s", cache_path)
         return 0
 
-    documents = parse_cache(cache_path)
-    if not documents:
+    # First pass: parse cache without API panels to get doc list and timestamps
+    documents_initial = parse_cache(cache_path)
+    if not documents_initial:
         log.debug("No documents found in cache")
         return 0
 
     # Filter to only documents that need syncing
-    to_sync = [
-        doc for doc in documents if state.needs_sync(doc.id, doc.updated_at)
+    to_sync_ids = [
+        doc.id for doc in documents_initial if state.needs_sync(doc.id, doc.updated_at)
     ]
 
-    if not to_sync:
-        log.debug("All %d documents are up to date", len(documents))
+    if not to_sync_ids:
+        log.debug("All %d documents are up to date", len(documents_initial))
         return 0
 
-    log.debug("%d of %d documents need syncing", len(to_sync), len(documents))
+    log.debug("%d of %d documents need syncing", len(to_sync_ids), len(documents_initial))
+
+    # Fetch AI panels from Granola API for docs that need syncing
+    api_panels = fetch_panels(to_sync_ids)
+
+    # Re-parse with API panel data so panels are populated
+    documents = parse_cache(cache_path, api_panels=api_panels)
+    to_sync = [doc for doc in documents if doc.id in set(to_sync_ids)]
 
     # Scan vault for wikilink terms (only if enabled)
     terms: dict[str, str] = {}

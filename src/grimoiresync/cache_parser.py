@@ -12,8 +12,17 @@ from .models import Attendee, DocumentPanel, GranolaDocument, TranscriptEntry
 log = logging.getLogger(__name__)
 
 
-def parse_cache(cache_path: Path) -> list[GranolaDocument]:
-    """Parse the Granola cache file and return a list of documents."""
+def parse_cache(
+    cache_path: Path,
+    api_panels: dict[str, dict] | None = None,
+) -> list[GranolaDocument]:
+    """Parse the Granola cache file and return a list of documents.
+
+    Args:
+        cache_path: Path to Granola's cache-v4.json.
+        api_panels: Optional dict of {doc_id: {"title": str, "content": dict}}
+            from the Granola API. When present, used as primary panel source.
+    """
     raw_text = cache_path.read_text(encoding="utf-8")
     outer = json.loads(raw_text)
 
@@ -37,7 +46,7 @@ def parse_cache(cache_path: Path) -> list[GranolaDocument]:
         try:
             granola_doc = _parse_document(
                 doc_id, doc, meetings_meta, transcripts, document_panels,
-                chat_context,
+                chat_context, api_panels=api_panels,
             )
             results.append(granola_doc)
         except Exception:
@@ -102,6 +111,8 @@ def _parse_document(
     transcripts: dict,
     document_panels: dict,
     chat_context: dict | None = None,
+    *,
+    api_panels: dict[str, dict] | None = None,
 ) -> GranolaDocument:
     """Parse a single document from the cache."""
     title = doc.get("title", "Untitled Meeting")
@@ -196,6 +207,15 @@ def _parse_document(
             )
         if panel_md:
             panels.append(DocumentPanel(title=panel_title, content_markdown=panel_md))
+
+    # Primary source: API panel data (Granola v4 no longer stores panels locally)
+    if not panels and api_panels:
+        api_panel = api_panels.get(doc_id)
+        if api_panel:
+            from .prosemirror import prosemirror_to_markdown
+            panel_md = prosemirror_to_markdown(api_panel["content"])
+            if panel_md:
+                panels = _parse_panels_from_markdown(panel_md)
 
     # v4 fallback: panels stored in multiChatState.chatContext.activeEditorMarkdown
     if not panels and chat_context:
