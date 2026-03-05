@@ -8,7 +8,7 @@ GrimoireSync watches Granola's local cache file for changes and writes each meet
 
 - **Live sync** -- watches the Granola cache file and syncs on change (with debounce)
 - **Auto-wikilinks** -- scans your vault for note titles and existing `[[links]]`, then injects them into synced notes
-- **AI panels** -- includes Granola's AI-generated summaries (action items, key decisions, etc.)
+- **AI panels** -- fetches Granola's AI-generated summaries from the API (action items, key decisions, etc.)
 - **Transcripts** -- optionally includes the full transcript in a collapsible `<details>` block
 - **Rename detection** -- if a meeting title changes in Granola, the old file is removed and replaced
 - **Incremental sync** -- tracks what's already been synced and only writes changed notes
@@ -18,7 +18,7 @@ GrimoireSync watches Granola's local cache file for changes and writes each meet
 
 - Python 3.12+
 - macOS (reads Granola's cache from `~/Library/Application Support/Granola/cache-v4.json`)
-- A Granola account with local cache enabled
+- A Granola account (AI panels are fetched via the Granola API using your local auth token)
 - An Obsidian vault
 
 ## Installation
@@ -95,8 +95,9 @@ grimoiresync --once --force
 
 ## How it works
 
-1. **Parse** -- Reads Granola's double-encoded JSON cache and extracts meeting documents, attendees, AI panels, and transcripts
-2. **Convert** -- Transforms ProseMirror JSON and HTML content into clean markdown
-3. **Wikify** -- Scans your vault for note titles and existing wikilinks, then injects `[[wikilinks]]` into the note body (respecting code blocks, URLs, and existing links)
-4. **Write** -- Saves each meeting as `YYYY-MM-DD - Title.md` in your configured vault subfolder
-5. **Watch** -- Monitors the cache file for changes and re-syncs with a 2-second debounce
+1. **Parse** -- Reads Granola's double-encoded JSON cache and extracts meeting documents, attendees, and transcripts
+2. **Fetch panels** -- Calls the Granola API to retrieve AI-generated summary panels (using the WorkOS auth token from `~/Library/Application Support/Granola/supabase.json`)
+3. **Convert** -- Transforms ProseMirror JSON and HTML content into clean markdown
+4. **Wikify** -- Scans your vault for note titles and existing wikilinks, then injects `[[wikilinks]]` into the note body (respecting code blocks, URLs, and existing links)
+5. **Write** -- Saves each meeting as `YYYY-MM-DD - Title.md` in your configured vault subfolder
+6. **Watch** -- Monitors the cache file for changes and re-syncs with a 2-second debounce
