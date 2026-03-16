@@ -19,7 +19,7 @@ def parse_cache(
     """Parse the Granola cache file and return a list of documents.
 
     Args:
-        cache_path: Path to Granola's cache-v4.json.
+        cache_path: Path to Granola's cache JSON file.
         api_panels: Optional dict of {doc_id: {"title": str, "content": dict}}
             from the Granola API. When present, used as primary panel source.
     """
@@ -78,6 +78,58 @@ def _parse_timestamp(value: str | int | float | None) -> datetime:
         except ValueError:
             pass
     return datetime.now(tz=timezone.utc)
+
+
+def _html_to_markdown(html: str) -> str:
+    """Convert simple HTML (h1-h6, ul/li, p) to markdown."""
+    import re
+    from html.parser import HTMLParser
+
+    class _Converter(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.parts: list[str] = []
+            self.list_depth = 0
+
+        def handle_starttag(self, tag: str, attrs: list) -> None:
+            if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
+                level = int(tag[1])
+                self.parts.append("\n" + "#" * level + " ")
+            elif tag == "ul":
+                self.list_depth += 1
+            elif tag == "li":
+                indent = "  " * (self.list_depth - 1)
+                self.parts.append("\n" + indent + "- ")
+            elif tag == "p":
+                self.parts.append("\n")
+            elif tag == "br":
+                self.parts.append("\n")
+            elif tag in ("strong", "b"):
+                self.parts.append("**")
+            elif tag in ("em", "i"):
+                self.parts.append("*")
+
+        def handle_endtag(self, tag: str) -> None:
+            if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
+                self.parts.append("\n")
+            elif tag == "ul":
+                self.list_depth = max(0, self.list_depth - 1)
+            elif tag == "p":
+                self.parts.append("\n")
+            elif tag in ("strong", "b"):
+                self.parts.append("**")
+            elif tag in ("em", "i"):
+                self.parts.append("*")
+
+        def handle_data(self, data: str) -> None:
+            self.parts.append(data)
+
+    converter = _Converter()
+    converter.feed(html)
+    result = "".join(converter.parts).strip()
+    # Collapse runs of 3+ newlines to 2
+    result = re.sub(r"\n{3,}", "\n\n", result)
+    return result
 
 
 def _parse_panels_from_markdown(markdown: str) -> list[DocumentPanel]:
@@ -208,14 +260,23 @@ def _parse_document(
         if panel_md:
             panels.append(DocumentPanel(title=panel_title, content_markdown=panel_md))
 
-    # Primary source: API panel data (Granola v4 no longer stores panels locally)
+    # Primary source: API panel data (Granola v4+ no longer stores panels locally)
     if not panels and api_panels:
         api_panel = api_panels.get(doc_id)
         if api_panel:
-            from .prosemirror import prosemirror_to_markdown
-            panel_md = prosemirror_to_markdown(api_panel["content"])
-            if panel_md:
-                panels = _parse_panels_from_markdown(panel_md)
+            if "html" in api_panel:
+                # HTML string from last_viewed_panel
+                panel_md = _html_to_markdown(api_panel["html"])
+                if panel_md:
+                    panels = _parse_panels_from_markdown(panel_md)
+            elif "markdown" in api_panel:
+                # notes_markdown fallback: already a markdown string
+                panels = _parse_panels_from_markdown(api_panel["markdown"])
+            elif "content" in api_panel:
+                from .prosemirror import prosemirror_to_markdown
+                panel_md = prosemirror_to_markdown(api_panel["content"])
+                if panel_md:
+                    panels = _parse_panels_from_markdown(panel_md)
 
     # v4 fallback: panels stored in multiChatState.chatContext.activeEditorMarkdown
     if not panels and chat_context:

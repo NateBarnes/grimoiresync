@@ -61,8 +61,9 @@ def fetch_panels(doc_ids: list[str]) -> dict[str, dict]:
         log.warning("Granola API request failed; falling back to local cache", exc_info=True)
         return {}
 
-    results: dict[str, dict] = {}
     documents = data if isinstance(data, list) else data.get("docs", [])
+
+    results: dict[str, dict] = {}
 
     for doc in documents:
         if not isinstance(doc, dict):
@@ -70,13 +71,28 @@ def fetch_panels(doc_ids: list[str]) -> dict[str, dict]:
         doc_id = doc.get("id")
         if not doc_id:
             continue
+
+        # Primary: last_viewed_panel
         panel = doc.get("last_viewed_panel")
-        if not panel or not isinstance(panel, dict):
-            continue
-        content = panel.get("content")
-        if content and isinstance(content, dict):
+        if isinstance(panel, dict):
+            content = panel.get("content")
             title = panel.get("title", "Summary")
-            results[doc_id] = {"title": title, "content": content}
+            if content and isinstance(content, dict):
+                # ProseMirror JSON
+                results[doc_id] = {"title": title, "content": content}
+                continue
+            if content and isinstance(content, str):
+                # HTML string
+                results[doc_id] = {"title": title, "html": content}
+                continue
+
+        # Fallback: notes_markdown from the API response
+        notes_md = doc.get("notes_markdown")
+        if notes_md and isinstance(notes_md, str):
+            results[doc_id] = {"title": "Summary", "markdown": notes_md}
+            continue
+
+        log.debug("No panel content for doc %s (%s)", doc.get("title", "?"), doc_id)
 
     log.debug("Fetched panels for %d of %d documents", len(results), len(doc_ids))
     return results
