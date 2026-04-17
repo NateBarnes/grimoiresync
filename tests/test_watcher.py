@@ -60,6 +60,63 @@ class TestCacheEventHandler:
             MockTimer.assert_called_once()
             mock_timer.start.assert_called_once()
 
+    def test_on_created_correct_file_schedules_sync(self, watcher_config, mock_state):
+        handler = _CacheEventHandler(watcher_config, mock_state)
+        event = MagicMock()
+        event.is_directory = False
+        event.src_path = str(watcher_config.granola_cache_path)
+
+        with patch("grimoiresync.watcher.threading.Timer") as MockTimer:
+            MockTimer.return_value = MagicMock()
+            handler.on_created(event)
+            MockTimer.assert_called_once()
+
+    def test_on_created_wrong_file_ignored(self, watcher_config, mock_state):
+        handler = _CacheEventHandler(watcher_config, mock_state)
+        event = MagicMock()
+        event.is_directory = False
+        event.src_path = "/some/other/file.txt"
+        handler.on_created(event)
+        assert handler._timer is None
+
+    def test_on_created_directory_ignored(self, watcher_config, mock_state):
+        handler = _CacheEventHandler(watcher_config, mock_state)
+        event = MagicMock()
+        event.is_directory = True
+        handler.on_created(event)
+        assert handler._timer is None
+
+    def test_on_moved_rename_into_cache_schedules_sync(self, watcher_config, mock_state):
+        # Simulates Granola's atomic write: cache-v6.json.tmp → cache-v6.json
+        handler = _CacheEventHandler(watcher_config, mock_state)
+        event = MagicMock()
+        event.is_directory = False
+        event.src_path = str(watcher_config.granola_cache_path) + ".tmp"
+        event.dest_path = str(watcher_config.granola_cache_path)
+
+        with patch("grimoiresync.watcher.threading.Timer") as MockTimer:
+            MockTimer.return_value = MagicMock()
+            handler.on_moved(event)
+            MockTimer.assert_called_once()
+
+    def test_on_moved_rename_away_from_cache_ignored(self, watcher_config, mock_state):
+        # A rename whose destination is not the cache file shouldn't trigger a sync.
+        handler = _CacheEventHandler(watcher_config, mock_state)
+        event = MagicMock()
+        event.is_directory = False
+        event.src_path = str(watcher_config.granola_cache_path)
+        event.dest_path = "/some/other/file.txt"
+        handler.on_moved(event)
+        assert handler._timer is None
+
+    def test_on_moved_directory_ignored(self, watcher_config, mock_state):
+        handler = _CacheEventHandler(watcher_config, mock_state)
+        event = MagicMock()
+        event.is_directory = True
+        event.dest_path = str(watcher_config.granola_cache_path)
+        handler.on_moved(event)
+        assert handler._timer is None
+
     def test_schedule_sync_cancels_previous_timer(self, watcher_config, mock_state):
         handler = _CacheEventHandler(watcher_config, mock_state)
         event = MagicMock()

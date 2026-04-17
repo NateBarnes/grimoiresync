@@ -7,7 +7,12 @@ import signal
 import threading
 import time
 
-from watchdog.events import FileModifiedEvent, FileSystemEventHandler
+from watchdog.events import (
+    FileCreatedEvent,
+    FileModifiedEvent,
+    FileMovedEvent,
+    FileSystemEventHandler,
+)
 from watchdog.observers import Observer
 
 from .config import Config
@@ -30,14 +35,27 @@ class _CacheEventHandler(FileSystemEventHandler):
         self._timer: threading.Timer | None = None
         self._lock = threading.Lock()
 
-    def on_modified(self, event: FileModifiedEvent) -> None:  # type: ignore[override]
-        if event.is_directory:
-            return
-        # Only react to the cache file itself
-        if not str(event.src_path).endswith(self._config.granola_cache_path.name):
-            return
+    def _matches_cache(self, path: str) -> bool:
+        return str(path).endswith(self._config.granola_cache_path.name)
 
+    def on_modified(self, event: FileModifiedEvent) -> None:  # type: ignore[override]
+        if event.is_directory or not self._matches_cache(event.src_path):
+            return
         log.debug("Cache file modified, scheduling sync in %.1fs", _DEBOUNCE_SECONDS)
+        self._schedule_sync()
+
+    def on_created(self, event: FileCreatedEvent) -> None:  # type: ignore[override]
+        if event.is_directory or not self._matches_cache(event.src_path):
+            return
+        log.debug("Cache file created, scheduling sync in %.1fs", _DEBOUNCE_SECONDS)
+        self._schedule_sync()
+
+    def on_moved(self, event: FileMovedEvent) -> None:  # type: ignore[override]
+        # Granola writes atomically: temp file → rename to cache-v6.json.
+        # FSEvents delivers this as a moved event with dest_path = final cache file.
+        if event.is_directory or not self._matches_cache(event.dest_path):
+            return
+        log.debug("Cache file replaced via rename, scheduling sync in %.1fs", _DEBOUNCE_SECONDS)
         self._schedule_sync()
 
     def _schedule_sync(self) -> None:
