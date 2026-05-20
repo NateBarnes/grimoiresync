@@ -36,7 +36,12 @@ class _CacheEventHandler(FileSystemEventHandler):
         self._lock = threading.Lock()
 
     def _matches_cache(self, path: str) -> bool:
-        return str(path).endswith(self._config.granola_cache_path.name)
+        # Match both the plain cache (older Granola) and the encrypted variant
+        # that current Granola writes whenever local state changes — either
+        # signals "something happened, try a sync".
+        name = self._config.granola_cache_path.name
+        s = str(path)
+        return s.endswith(name) or s.endswith(name + ".enc")
 
     def on_modified(self, event: FileModifiedEvent) -> None:  # type: ignore[override]
         if event.is_directory or not self._matches_cache(event.src_path):

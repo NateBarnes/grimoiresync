@@ -56,6 +56,37 @@ def parse_cache(
     return results
 
 
+def parse_api_documents(
+    docs: list[dict],
+    api_panels: dict[str, dict] | None = None,
+) -> list[GranolaDocument]:
+    """Parse documents returned by Granola's get-documents API.
+
+    The API response shape per document matches what _parse_document expects,
+    so we reuse it with empty side-channel dicts (meetingsMetadata,
+    transcripts, documentPanels are no longer carried in the local cache as
+    of Granola's encrypted-storage migration; attendees fall back to
+    doc.people / doc.google_calendar_event automatically).
+    """
+    results: list[GranolaDocument] = []
+    for doc in docs:
+        if not isinstance(doc, dict):
+            continue
+        doc_id = doc.get("id")
+        if not doc_id or doc.get("deleted_at"):
+            continue
+        try:
+            results.append(
+                _parse_document(
+                    doc_id, doc, {}, {}, {}, None, api_panels=api_panels,
+                )
+            )
+        except Exception:
+            log.warning("Failed to parse API document %s", doc_id, exc_info=True)
+    log.debug("Parsed %d documents from API response", len(results))
+    return results
+
+
 def _parse_timestamp(value: str | int | float | None) -> datetime:
     """Parse a timestamp string or number into a datetime."""
     if value is None:

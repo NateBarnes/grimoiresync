@@ -60,6 +60,18 @@ class TestCacheEventHandler:
             MockTimer.assert_called_once()
             mock_timer.start.assert_called_once()
 
+    def test_on_modified_encrypted_variant_schedules_sync(self, watcher_config, mock_state):
+        # Current Granola writes cache-v*.json.enc — watcher must trigger on it too.
+        handler = _CacheEventHandler(watcher_config, mock_state)
+        event = MagicMock()
+        event.is_directory = False
+        event.src_path = str(watcher_config.granola_cache_path) + ".enc"
+
+        with patch("grimoiresync.watcher.threading.Timer") as MockTimer:
+            MockTimer.return_value = MagicMock()
+            handler.on_modified(event)
+            MockTimer.assert_called_once()
+
     def test_on_created_correct_file_schedules_sync(self, watcher_config, mock_state):
         handler = _CacheEventHandler(watcher_config, mock_state)
         event = MagicMock()

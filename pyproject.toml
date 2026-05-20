@@ -11,6 +11,7 @@ dependencies = [
     "watchdog>=4.0",
     "pyyaml>=6.0",
     "requests>=2.31",
+    "cryptography>=44.0",
 ]
 
 [project.optional-dependencies]

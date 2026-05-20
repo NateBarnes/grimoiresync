@@ -428,7 +428,7 @@ class TestParseCache:
         cache_file.write_text(json.dumps({"cache": json.dumps(inner)}))
         # Patch _parse_document to fail on d1 only
         with patch("grimoiresync.cache_parser._parse_document") as mock_pd:
-            def side_effect(doc_id, *args):
+            def side_effect(doc_id, *args, **kwargs):
                 if doc_id == "d1":
                     raise RuntimeError("parse failed")
                 return GranolaDocument(

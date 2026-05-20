@@ -73,6 +73,14 @@ def make_doc(fixed_dt):
 
 
 class TestRunSync:
+    @pytest.fixture(autouse=True)
+    def _disable_api_path(self):
+        # These tests exercise the cache fallback. Force the API path to report
+        # "unavailable" so run_sync falls through to parse_cache, which each
+        # test mocks individually.
+        with patch("grimoiresync.sync_engine.list_documents", return_value=None):
+            yield
+
     @patch("grimoiresync.sync_engine.parse_cache")
     def test_cache_not_found(self, mock_parse):
         cfg = Config(vault_path=Path("/vault"))
