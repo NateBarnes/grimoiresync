@@ -16,6 +16,7 @@ from watchdog.events import (
 from watchdog.observers import Observer
 
 from .config import Config
+from .health import HealthMonitor, SyncObservation, get_monitor
 from .sync_engine import run_sync
 from .sync_state import SyncState
 
@@ -27,11 +28,19 @@ _DEBOUNCE_SECONDS = 2.0
 class _CacheEventHandler(FileSystemEventHandler):
     """Watches for modifications to the Granola cache file."""
 
-    def __init__(self, config: Config, state: SyncState, *, dry_run: bool = False):
+    def __init__(
+        self,
+        config: Config,
+        state: SyncState,
+        *,
+        dry_run: bool = False,
+        monitor: HealthMonitor | None = None,
+    ):
         super().__init__()
         self._config = config
         self._state = state
         self._dry_run = dry_run
+        self._monitor = monitor
         self._timer: threading.Timer | None = None
         self._lock = threading.Lock()
 
@@ -73,9 +82,18 @@ class _CacheEventHandler(FileSystemEventHandler):
 
     def _do_sync(self) -> None:
         try:
-            run_sync(self._config, self._state, dry_run=self._dry_run)
+            result = run_sync(self._config, self._state, dry_run=self._dry_run)
         except Exception:
             log.error("Sync failed", exc_info=True)
+            return
+        if self._monitor is not None:
+            self._monitor.record_sync(
+                SyncObservation(
+                    documents=list(result.documents),
+                    source=result.source,
+                    fetched_was_none=result.fetched_was_none,
+                )
+            )
 
 
 def watch(config: Config, state: SyncState, *, dry_run: bool = False) -> None:
@@ -86,11 +104,22 @@ def watch(config: Config, state: SyncState, *, dry_run: bool = False) -> None:
         log.error("Cache directory does not exist: %s", cache_dir)
         raise SystemExit(1)
 
+    monitor = get_monitor()
+    monitor.attach_sync_state(state)
+    monitor.check_startup(config)
+
     # Initial sync on startup
     log.info("Running initial sync...")
-    run_sync(config, state, dry_run=dry_run)
+    initial = run_sync(config, state, dry_run=dry_run)
+    monitor.record_sync(
+        SyncObservation(
+            documents=list(initial.documents),
+            source=initial.source,
+            fetched_was_none=initial.fetched_was_none,
+        )
+    )
 
-    handler = _CacheEventHandler(config, state, dry_run=dry_run)
+    handler = _CacheEventHandler(config, state, dry_run=dry_run, monitor=monitor)
     observer = Observer()
     observer.schedule(handler, str(cache_dir), recursive=False)
 

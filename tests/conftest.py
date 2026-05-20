@@ -7,8 +7,20 @@ from pathlib import Path
 
 import pytest
 
+from grimoiresync import health as _health
 from grimoiresync.config import Config
 from grimoiresync.models import Attendee, DocumentPanel, GranolaDocument, TranscriptEntry
+
+
+@pytest.fixture(autouse=True)
+def _isolate_health_monitor(tmp_path, monkeypatch):
+    """Keep tests from writing health_state.json to the real user dir or firing
+    macOS notifications via the singleton HealthMonitor."""
+    _health.reset_monitor()
+    monkeypatch.setattr(_health, "_DEFAULT_HEALTH_PATH", tmp_path / "_test_health.json")
+    monkeypatch.setattr(_health, "_osascript_notify", lambda alert: None)
+    yield
+    _health.reset_monitor()
 
 
 @pytest.fixture

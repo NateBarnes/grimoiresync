@@ -125,6 +125,20 @@ def load_supabase_token() -> str | None:
     """Return the WorkOS access token from supabase.json.enc, or None on failure."""
     if not SUPABASE_ENC.exists():
         return None
+    token = _load_supabase_token_impl()
+    # Lazy import: health.py imports from sync_state/models, but crypto is the
+    # lower-level module — avoid an import-time cycle by deferring this lookup.
+    try:
+        from . import health
+        health.get_monitor().record_decryption(
+            success=token is not None, what="supabase token"
+        )
+    except Exception:
+        log.debug("Could not report decryption outcome to HealthMonitor", exc_info=True)
+    return token
+
+
+def _load_supabase_token_impl() -> str | None:
     try:
         plaintext = decrypt_file(SUPABASE_ENC)
         sb = json.loads(plaintext)

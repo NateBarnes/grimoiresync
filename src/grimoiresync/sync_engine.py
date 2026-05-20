@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .api_client import fetch_panels, list_documents
@@ -14,6 +15,39 @@ from .sync_state import SyncState
 from .wikilinks import inject_wikilinks, scan_vault_terms
 
 log = logging.getLogger(__name__)
+
+
+@dataclass
+class SyncResult:
+    """Result of one run_sync pass. Health checks consume the extra fields."""
+
+    written: int = 0
+    documents: list[GranolaDocument] = field(default_factory=list)
+    source: str | None = None
+    fetched_was_none: bool = False
+
+    # Keep `assert run_sync(...) == N` working for callers that only care about
+    # the written count (notably existing tests and any external CLI scripts).
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, SyncResult):
+            return (
+                self.written == other.written
+                and self.documents == other.documents
+                and self.source == other.source
+                and self.fetched_was_none == other.fetched_was_none
+            )
+        if isinstance(other, int):
+            return self.written == other
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash((self.written, self.source, self.fetched_was_none))
+
+    def __int__(self) -> int:
+        return self.written
+
+    def __bool__(self) -> bool:
+        return self.written > 0
 
 
 def find_note_by_granola_id(vault_path: Path, granola_id: str) -> Path | None:
@@ -72,10 +106,10 @@ def run_sync(
     state: SyncState,
     *,
     dry_run: bool = False,
-) -> int:
-    """Run a single sync pass. Returns the number of notes written."""
+) -> SyncResult:
+    """Run a single sync pass. Returns a SyncResult with metrics for health checks."""
     fetched = _fetch_via_api(state)
-    source = "API"
+    source: str | None = "API"
     if fetched is None or not fetched[0]:
         # API unavailable or returned nothing — try the legacy local cache.
         fetched = _fetch_via_cache(config.granola_cache_path, state)
@@ -85,12 +119,12 @@ def run_sync(
             "Could not fetch documents via API or local cache (%s)",
             config.granola_cache_path,
         )
-        return 0
+        return SyncResult(written=0, documents=[], source=None, fetched_was_none=True)
 
     documents, to_sync_ids = fetched
     if not to_sync_ids:
         log.debug("All %d documents are up to date (source=%s)", len(documents), source)
-        return 0
+        return SyncResult(written=0, documents=documents, source=source)
 
     log.debug(
         "%d of %d documents need syncing (source=%s)",
@@ -160,4 +194,4 @@ def run_sync(
             log.error("Failed to sync document %s (%s)", doc.id, doc.title, exc_info=True)
 
     log.info("Sync complete: %d notes written (source=%s)", written, source)
-    return written
+    return SyncResult(written=written, documents=documents, source=source)
