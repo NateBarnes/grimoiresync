@@ -326,6 +326,90 @@ class TestDecryptionRegression:
         assert alert is not None
 
 
+# ---- Rule 6: doc write failures ---------------------------------------------
+
+
+class TestDocWriteFailures:
+    def test_single_failure_does_not_alert(self, health_path, recording_notifier, fake_clock):
+        monitor = _make_monitor(health_path, recording_notifier, fake_clock)
+
+        alert = monitor.record_doc_write_failure("doc-1", "Title", "boom")
+
+        assert alert is None
+        assert recording_notifier.calls == []
+        assert monitor._state["write_failures"]["doc-1"]["count"] == 1
+
+    def test_threshold_fires_alert(self, health_path, recording_notifier, fake_clock):
+        monitor = _make_monitor(health_path, recording_notifier, fake_clock)
+
+        for _ in range(3):
+            alert = monitor.record_doc_write_failure("doc-1", "Sovos Sync", "EDEADLK")
+
+        assert alert is not None
+        assert alert.rule == "doc_write_failures"
+        assert "Sovos Sync" in alert.message
+        assert len(recording_notifier.calls) == 1
+
+    def test_success_resets_count(self, health_path, recording_notifier, fake_clock):
+        monitor = _make_monitor(health_path, recording_notifier, fake_clock)
+        monitor.record_doc_write_failure("doc-1", "T", "e")
+        monitor.record_doc_write_failure("doc-1", "T", "e")
+        monitor.record_doc_write_success("doc-1")
+
+        # Two more failures should not cross the threshold because the counter reset.
+        monitor.record_doc_write_failure("doc-1", "T", "e")
+        alert = monitor.record_doc_write_failure("doc-1", "T", "e")
+
+        assert alert is None
+        assert recording_notifier.calls == []
+
+    def test_multi_doc_alert_lists_both(self, health_path, recording_notifier, fake_clock):
+        monitor = _make_monitor(health_path, recording_notifier, fake_clock)
+        # Push doc-1 to threshold first.
+        for _ in range(3):
+            monitor.record_doc_write_failure("doc-1", "First Note", "e")
+        # Doc-2 crosses threshold next — alert is suppressed by per-process dedupe,
+        # but its entry should still appear in state. Use a fresh process to verify
+        # the multi-doc message format.
+        for _ in range(3):
+            monitor.record_doc_write_failure("doc-2", "Second Note", "e")
+
+        # Verify the second-process re-emission (after cooldown) lists both docs.
+        fake_clock.advance(hours=7)
+        m2 = _make_monitor(health_path, recording_notifier, fake_clock)
+        alert = m2.record_doc_write_failure("doc-2", "Second Note", "e")
+
+        assert alert is not None
+        assert "First Note" in alert.message
+        assert "Second Note" in alert.message
+
+    def test_state_persists_across_monitors(self, health_path, recording_notifier, fake_clock):
+        m1 = _make_monitor(health_path, recording_notifier, fake_clock)
+        m1.record_doc_write_failure("doc-1", "T", "e")
+        m1.record_doc_write_failure("doc-1", "T", "e")
+
+        m2 = _make_monitor(health_path, recording_notifier, fake_clock)
+        # One more failure on the fresh monitor should cross threshold.
+        alert = m2.record_doc_write_failure("doc-1", "T", "e")
+
+        assert alert is not None
+        assert alert.rule == "doc_write_failures"
+
+    def test_cooldown_suppresses_repeat_alert(self, health_path, recording_notifier, fake_clock):
+        m1 = _make_monitor(health_path, recording_notifier, fake_clock)
+        for _ in range(3):
+            m1.record_doc_write_failure("doc-1", "T", "e")
+
+        # New process within cooldown — counters survive, additional failures
+        # would re-cross the threshold but dedupe suppresses the notify.
+        fake_clock.advance(hours=1)
+        m2 = _make_monitor(health_path, recording_notifier, fake_clock)
+        m2.record_doc_write_failure("doc-1", "T", "e")
+
+        rule_calls = [a for a in recording_notifier.calls if a.rule == "doc_write_failures"]
+        assert len(rule_calls) == 1
+
+
 # ---- Dedupe ------------------------------------------------------------------
 
 

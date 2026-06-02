@@ -475,6 +475,8 @@ class TestRunSync:
     @patch("grimoiresync.sync_engine.make_filename", return_value="2024-06-15 - Test.md")
     @patch("grimoiresync.sync_engine.parse_cache")
     def test_exception_during_doc_processing(self, mock_parse, mock_mkfn, mock_assemble, mock_write, make_doc, tmp_path):
+        from grimoiresync.health import get_monitor
+
         doc1 = make_doc(doc_id="d1")
         doc2 = make_doc(doc_id="d2")
         mock_parse.return_value = [doc1, doc2]
@@ -490,6 +492,36 @@ class TestRunSync:
 
         # Both fail, so 0 written
         assert result == 0
+        # Both failures should be recorded in HealthMonitor.
+        wf = get_monitor()._state["write_failures"]
+        assert wf["d1"]["count"] == 1
+        assert wf["d2"]["count"] == 1
+
+    @patch("grimoiresync.sync_engine.write_note")
+    @patch("grimoiresync.sync_engine.assemble_note", return_value="content")
+    @patch("grimoiresync.sync_engine.make_filename", return_value="2024-06-15 - Test.md")
+    @patch("grimoiresync.sync_engine.parse_cache")
+    def test_successful_write_clears_failure_state(self, mock_parse, mock_mkfn, mock_assemble, mock_write, make_doc, tmp_path):
+        from grimoiresync.health import get_monitor
+
+        doc = make_doc(doc_id="d1")
+        mock_parse.return_value = [doc]
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        cfg = Config(vault_path=vault, granola_cache_path=MagicMock(exists=MagicMock(return_value=True)), auto_wikilinks=False)
+        state = MagicMock()
+        state.needs_sync.return_value = True
+        state.get_previous_filename.return_value = None
+        mock_write.return_value = vault / "Meetings" / "2024-06-15 - Test.md"
+
+        # Seed a failure so we can verify it gets cleared.
+        get_monitor().record_doc_write_failure("d1", "doc 1", "stale")
+        assert "d1" in get_monitor()._state["write_failures"]
+
+        with patch.object(Path, "exists", return_value=False):
+            run_sync(cfg, state)
+
+        assert "d1" not in get_monitor()._state["write_failures"]
 
     @patch("grimoiresync.sync_engine.write_note")
     @patch("grimoiresync.sync_engine.assemble_note", return_value="content")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -304,3 +305,88 @@ class TestWriteNote:
         path = write_note(doc, sub, "content")
         assert sub.exists()
         assert path.exists()
+
+    def test_recovers_from_edeadlk_via_read(self, fixed_now, tmp_path, monkeypatch):
+        """Dataless placeholder: first write hits EDEADLK, read materializes, retry succeeds."""
+        doc = GranolaDocument(
+            id="d", title="Test", created_at=fixed_now, updated_at=fixed_now,
+        )
+        # Pre-create the file so read_text has something to materialize.
+        target = tmp_path / make_filename(doc)
+        target.write_text("stale", encoding="utf-8")
+
+        real_write = Path.write_text
+        real_read = Path.read_text
+        writes: list[str] = []
+        read_called = {"n": 0}
+
+        def fake_write(self, data, *a, **kw):
+            if self == target and len(writes) == 0:
+                writes.append("edeadlk")
+                raise OSError(errno.EDEADLK, "Resource deadlock avoided")
+            writes.append("ok")
+            return real_write(self, data, *a, **kw)
+
+        def fake_read(self, *a, **kw):
+            if self == target:
+                read_called["n"] += 1
+            return real_read(self, *a, **kw)
+
+        monkeypatch.setattr(Path, "write_text", fake_write)
+        monkeypatch.setattr(Path, "read_text", fake_read)
+
+        path = write_note(doc, tmp_path, "fresh content")
+
+        assert writes == ["edeadlk", "ok"]
+        assert read_called["n"] == 1
+        assert path.read_text(encoding="utf-8") == "fresh content"
+
+    def test_recovers_from_edeadlk_via_unlink(self, fixed_now, tmp_path, monkeypatch):
+        """Persistent EDEADLK: read+retry also fails, unlink+retry succeeds."""
+        doc = GranolaDocument(
+            id="d", title="Test", created_at=fixed_now, updated_at=fixed_now,
+        )
+        target = tmp_path / make_filename(doc)
+        target.write_text("stale", encoding="utf-8")
+
+        real_write = Path.write_text
+        writes: list[str] = []
+        unlink_called = {"n": 0}
+
+        def fake_write(self, data, *a, **kw):
+            if self == target and len(writes) < 2:
+                writes.append("edeadlk")
+                raise OSError(errno.EDEADLK, "Resource deadlock avoided")
+            writes.append("ok")
+            return real_write(self, data, *a, **kw)
+
+        real_unlink = Path.unlink
+
+        def fake_unlink(self, *a, **kw):
+            if self == target:
+                unlink_called["n"] += 1
+            return real_unlink(self, *a, **kw)
+
+        monkeypatch.setattr(Path, "write_text", fake_write)
+        monkeypatch.setattr(Path, "unlink", fake_unlink)
+
+        path = write_note(doc, tmp_path, "fresh content")
+
+        assert writes == ["edeadlk", "edeadlk", "ok"]
+        assert unlink_called["n"] == 1
+        assert path.read_text(encoding="utf-8") == "fresh content"
+
+    def test_non_edeadlk_oserror_propagates(self, fixed_now, tmp_path, monkeypatch):
+        """A non-EDEADLK OSError must not trigger recovery — it propagates."""
+        doc = GranolaDocument(
+            id="d", title="Test", created_at=fixed_now, updated_at=fixed_now,
+        )
+
+        def fake_write(self, *a, **kw):
+            raise OSError(errno.EACCES, "Permission denied")
+
+        monkeypatch.setattr(Path, "write_text", fake_write)
+
+        with pytest.raises(OSError) as exc_info:
+            write_note(doc, tmp_path, "content")
+        assert exc_info.value.errno == errno.EACCES

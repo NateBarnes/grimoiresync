@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import html as html_mod
 import html.parser
 import logging
@@ -221,6 +222,34 @@ def write_note(
         return filepath
 
     notes_dir.mkdir(parents=True, exist_ok=True)
-    filepath.write_text(content, encoding="utf-8")
+    _write_with_edeadlk_recovery(filepath, content)
     log.info("Wrote %s (%d chars)", filepath, len(content))
     return filepath
+
+
+def _write_with_edeadlk_recovery(filepath: Path, content: str) -> None:
+    """Write `content` to `filepath`, recovering from macOS dataless placeholders.
+
+    A file-provider placeholder with the `dataless` BSD flag rejects truncating
+    opens with EDEADLK. Reading the file forces macOS to materialize it; if
+    materialization still leaves the write blocked, removing the stub is the
+    last resort.
+    """
+    try:
+        filepath.write_text(content, encoding="utf-8")
+        return
+    except OSError as e:
+        if e.errno != errno.EDEADLK:
+            raise
+
+    log.warning("EDEADLK on %s; materializing and retrying", filepath)
+    try:
+        filepath.read_text(encoding="utf-8")
+        filepath.write_text(content, encoding="utf-8")
+        return
+    except OSError:
+        pass
+
+    log.warning("EDEADLK after materialize; unlinking stub and retrying %s", filepath)
+    filepath.unlink(missing_ok=True)
+    filepath.write_text(content, encoding="utf-8")
