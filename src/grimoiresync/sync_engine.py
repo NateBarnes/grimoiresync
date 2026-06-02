@@ -9,6 +9,7 @@ from pathlib import Path
 from .api_client import fetch_panels, list_documents
 from .cache_parser import parse_api_documents, parse_cache
 from .config import Config
+from .health import get_monitor
 from .models import GranolaDocument
 from .note_writer import assemble_note, make_filename, write_note
 from .sync_state import SyncState
@@ -187,10 +188,13 @@ def run_sync(
             if not dry_run:
                 rel_path = str(filepath.relative_to(config.vault_path))
                 state.record_sync(doc.id, doc.updated_at, rel_path)
+                get_monitor().record_doc_write_success(doc.id)
 
             written += 1
 
-        except Exception:
+        except Exception as exc:
+            if not dry_run:
+                get_monitor().record_doc_write_failure(doc.id, doc.title, str(exc))
             log.error("Failed to sync document %s (%s)", doc.id, doc.title, exc_info=True)
 
     log.info("Sync complete: %d notes written (source=%s)", written, source)

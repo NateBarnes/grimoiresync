@@ -34,6 +34,10 @@ _ALERT_COOLDOWN = timedelta(hours=6)
 # fires, so a single legitimate empty meeting doesn't trip the alarm.
 _EMPTY_CONTENT_MIN_DOCS = 3
 
+# A doc must fail to write this many sync passes in a row before doc_write_failures
+# fires. Above one-off transient locks (Spotlight, AV), below a multi-hour silent break.
+_DOC_WRITE_FAILURE_THRESHOLD = 3
+
 _CACHE_VERSION_RE = re.compile(r"^cache-v(\d+)\.json(\.enc)?$")
 
 
@@ -72,7 +76,7 @@ class HealthMonitor:
         self._sync_state = sync_state
         self._notifier = notifier or _osascript_notify
         self._clock = clock or (lambda: datetime.now(tz=timezone.utc))
-        self._state: dict = {"alerted": {}, "last_decryption_ok": None}
+        self._state: dict = {"alerted": {}, "last_decryption_ok": None, "write_failures": {}}
         self._load()
         # Per-process dedupe: rules fire at most once per process even if the
         # persisted cooldown has expired between syncs.
@@ -88,6 +92,7 @@ class HealthMonitor:
             if isinstance(data, dict):
                 self._state.update(data)
                 self._state.setdefault("alerted", {})
+                self._state.setdefault("write_failures", {})
         except (json.JSONDecodeError, OSError):
             log.warning("health_state.json unreadable, starting fresh")
 
@@ -158,6 +163,52 @@ class HealthMonitor:
         if self._emit(alert):
             return alert
         return None
+
+    def record_doc_write_failure(
+        self, doc_id: str, title: str, error: str
+    ) -> Alert | None:
+        """Rule: per-doc write regression.
+
+        Track consecutive write failures per doc_id. Fire once any doc crosses
+        `_DOC_WRITE_FAILURE_THRESHOLD` — the alert message lists every doc
+        currently at or above the threshold so a single notification covers a
+        multi-doc outage.
+        """
+        wf: dict = self._state.setdefault("write_failures", {})
+        entry = wf.get(doc_id, {"count": 0})
+        entry["count"] = int(entry.get("count", 0)) + 1
+        entry["title"] = title
+        entry["last_error"] = error
+        entry["last_failure_at"] = self._now_iso()
+        wf[doc_id] = entry
+        self._save()
+
+        stuck = [
+            (did, e["title"])
+            for did, e in wf.items()
+            if int(e.get("count", 0)) >= _DOC_WRITE_FAILURE_THRESHOLD
+        ]
+        if not stuck:
+            return None
+
+        names = ", ".join(f"{title!r} ({did[:8]})" for did, title in stuck)
+        alert = Alert(
+            rule="doc_write_failures",
+            message=(
+                f"{len(stuck)} Granola doc(s) have failed to write "
+                f"{_DOC_WRITE_FAILURE_THRESHOLD}+ times in a row: {names}. "
+                "Check the destination filesystem (dataless placeholders, locks, permissions)."
+            ),
+        )
+        if self._emit(alert):
+            return alert
+        return None
+
+    def record_doc_write_success(self, doc_id: str) -> None:
+        """Clear the failure counter for a doc that just wrote successfully."""
+        wf: dict = self._state.setdefault("write_failures", {})
+        if wf.pop(doc_id, None) is not None:
+            self._save()
 
     # ---- rules ---------------------------------------------------------------
 
