@@ -9,7 +9,7 @@ from pathlib import Path
 from .api_client import fetch_panels, list_documents
 from .cache_parser import parse_api_documents, parse_cache
 from .config import Config
-from .health import get_monitor
+from .health import _doc_has_content, get_monitor
 from .models import GranolaDocument
 from .note_writer import assemble_note, make_filename, write_note
 from .sync_state import SyncState
@@ -26,6 +26,10 @@ class SyncResult:
     documents: list[GranolaDocument] = field(default_factory=list)
     source: str | None = None
     fetched_was_none: bool = False
+    # How many docs this pass tried to sync vs. how many ended up with a body.
+    # A large gap means the panel fetch is failing (see HealthMonitor).
+    panels_requested: int = 0
+    panels_recovered: int = 0
 
     # Keep `assert run_sync(...) == N` working for callers that only care about
     # the written count (notably existing tests and any external CLI scripts).
@@ -197,5 +201,12 @@ def run_sync(
                 get_monitor().record_doc_write_failure(doc.id, doc.title, str(exc))
             log.error("Failed to sync document %s (%s)", doc.id, doc.title, exc_info=True)
 
+    panels_recovered = sum(1 for doc in to_sync if _doc_has_content(doc))
     log.info("Sync complete: %d notes written (source=%s)", written, source)
-    return SyncResult(written=written, documents=documents, source=source)
+    return SyncResult(
+        written=written,
+        documents=documents,
+        source=source,
+        panels_requested=len(to_sync_ids),
+        panels_recovered=panels_recovered,
+    )

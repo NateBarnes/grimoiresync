@@ -66,9 +66,9 @@ def main(argv: list[str] | None = None) -> None:
         state.clear()
 
     if args.once:
-        written = run_sync(config, state, dry_run=args.dry_run)
-        if written:
-            print(f"Synced {written} note(s)")
+        result = run_sync(config, state, dry_run=args.dry_run)
+        if result:
+            print(f"Synced {result.written} note(s)")
         else:
             print("Everything up to date")
     else:

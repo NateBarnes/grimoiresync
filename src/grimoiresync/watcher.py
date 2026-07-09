@@ -92,6 +92,8 @@ class _CacheEventHandler(FileSystemEventHandler):
                     documents=list(result.documents),
                     source=result.source,
                     fetched_was_none=result.fetched_was_none,
+                    panels_requested=result.panels_requested,
+                    panels_recovered=result.panels_recovered,
                 )
             )
 
@@ -116,6 +118,8 @@ def watch(config: Config, state: SyncState, *, dry_run: bool = False) -> None:
             documents=list(initial.documents),
             source=initial.source,
             fetched_was_none=initial.fetched_was_none,
+            panels_requested=initial.panels_requested,
+            panels_recovered=initial.panels_recovered,
         )
     )
 

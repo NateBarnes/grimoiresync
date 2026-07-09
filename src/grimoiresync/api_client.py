@@ -17,6 +17,11 @@ _SUPABASE_PLAIN = Path.home() / "Library/Application Support/Granola/supabase.js
 _API_LIST_URL = "https://api.granola.ai/v2/get-documents"
 _API_BATCH_URL = "https://api.granola.ai/v1/get-documents-batch"
 
+# The batch endpoint rejects large ID lists with HTTP 400 (observed OK at 50,
+# failing at 100). Chunk requests well under that boundary — a single oversized
+# request previously 400'd and wiped out ALL panel content on bulk/force syncs.
+_PANEL_BATCH_SIZE = 25
+
 # Granola's API requires a recent-looking client identity; without it some
 # endpoints reject the request. The actual app sends a richer UA string but
 # this is sufficient for the JSON endpoints we use.
@@ -104,7 +109,9 @@ def fetch_panels(doc_ids: list[str]) -> dict[str, dict]:
     """Batch-fetch AI panel content for the given document IDs.
 
     Returns a dict mapping doc_id -> {"title": str, "content"|"html"|"markdown": ...}.
-    Documents without panels are omitted.
+    Documents without panels are omitted. IDs are fetched in chunks of
+    _PANEL_BATCH_SIZE because the batch endpoint 400s on large lists; a failed
+    chunk drops only its own IDs, leaving the rest of the results intact.
     """
     if not doc_ids:
         return {}
@@ -114,17 +121,29 @@ def fetch_panels(doc_ids: list[str]) -> dict[str, dict]:
         log.warning("No Granola API token found; skipping panel fetch")
         return {}
 
-    data = _post_json(
-        _API_BATCH_URL,
-        token,
-        {"document_ids": doc_ids, "include_last_viewed_panel": True},
-    )
-    if data is None:
-        return {}
-
-    documents = data if isinstance(data, list) else data.get("docs", [])
-
     results: dict[str, dict] = {}
+    for start in range(0, len(doc_ids), _PANEL_BATCH_SIZE):
+        chunk = doc_ids[start:start + _PANEL_BATCH_SIZE]
+        data = _post_json(
+            _API_BATCH_URL,
+            token,
+            {"document_ids": chunk, "include_last_viewed_panel": True},
+        )
+        if data is None:
+            log.warning(
+                "Panel batch %d-%d of %d failed; those docs will have no panel content",
+                start, start + len(chunk), len(doc_ids),
+            )
+            continue
+        documents = data if isinstance(data, list) else data.get("docs", [])
+        _extract_panels(documents, results)
+
+    log.debug("Fetched panels for %d of %d documents", len(results), len(doc_ids))
+    return results
+
+
+def _extract_panels(documents: list, results: dict[str, dict]) -> None:
+    """Parse one batch response, adding recovered panels to `results` in place."""
     for doc in documents:
         if not isinstance(doc, dict):
             continue
@@ -149,6 +168,3 @@ def fetch_panels(doc_ids: list[str]) -> dict[str, dict]:
             continue
 
         log.debug("No panel content for doc %s (%s)", doc.get("title", "?"), doc_id)
-
-    log.debug("Fetched panels for %d of %d documents", len(results), len(doc_ids))
-    return results

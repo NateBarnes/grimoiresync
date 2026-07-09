@@ -16,6 +16,8 @@ from grimoiresync.health import (
     _applescript_escape,
     _extract_cache_version,
     _osascript_notify as _real_osascript_notify,
+    _PANEL_SHORTFALL_MIN_DOCS,
+    _PANEL_SHORTFALL_RATIO,
     get_monitor,
     reset_monitor,
 )
@@ -284,6 +286,75 @@ class TestAllEmptyContent:
         alerts = monitor.record_sync(obs)
 
         assert all(a.rule != "all_empty_content" for a in alerts)
+
+
+# ---- Rule: panel-fetch shortfall --------------------------------------------
+
+
+class TestPanelFetchShortfall:
+    def test_fires_when_most_synced_docs_have_no_body(
+        self, health_path, recording_notifier, fake_clock
+    ):
+        monitor = _make_monitor(health_path, recording_notifier, fake_clock)
+        # 10 docs synced, only 2 got a body (the real-world bug: 8/224).
+        obs = SyncObservation(source="API", panels_requested=10, panels_recovered=2)
+
+        alerts = monitor.record_sync(obs)
+
+        assert "panel_fetch_shortfall" in {a.rule for a in alerts}
+
+    def test_fires_when_nothing_recovered(
+        self, health_path, recording_notifier, fake_clock
+    ):
+        monitor = _make_monitor(health_path, recording_notifier, fake_clock)
+        obs = SyncObservation(
+            source="API",
+            panels_requested=_PANEL_SHORTFALL_MIN_DOCS,
+            panels_recovered=0,
+        )
+
+        alerts = monitor.record_sync(obs)
+
+        assert "panel_fetch_shortfall" in {a.rule for a in alerts}
+
+    def test_does_not_fire_when_recovery_healthy(
+        self, health_path, recording_notifier, fake_clock
+    ):
+        monitor = _make_monitor(health_path, recording_notifier, fake_clock)
+        obs = SyncObservation(source="API", panels_requested=10, panels_recovered=9)
+
+        alerts = monitor.record_sync(obs)
+
+        assert all(a.rule != "panel_fetch_shortfall" for a in alerts)
+
+    def test_does_not_fire_at_exactly_the_ratio(
+        self, health_path, recording_notifier, fake_clock
+    ):
+        monitor = _make_monitor(health_path, recording_notifier, fake_clock)
+        requested = 10
+        recovered = int(requested * _PANEL_SHORTFALL_RATIO)  # exactly at threshold
+        obs = SyncObservation(
+            source="API", panels_requested=requested, panels_recovered=recovered
+        )
+
+        alerts = monitor.record_sync(obs)
+
+        assert all(a.rule != "panel_fetch_shortfall" for a in alerts)
+
+    def test_does_not_fire_below_min_docs(
+        self, health_path, recording_notifier, fake_clock
+    ):
+        monitor = _make_monitor(health_path, recording_notifier, fake_clock)
+        # Tiny incremental sync (below the guard) with zero bodies must stay quiet.
+        obs = SyncObservation(
+            source="API",
+            panels_requested=_PANEL_SHORTFALL_MIN_DOCS - 1,
+            panels_recovered=0,
+        )
+
+        alerts = monitor.record_sync(obs)
+
+        assert all(a.rule != "panel_fetch_shortfall" for a in alerts)
 
 
 # ---- Rule 5: decryption regression ------------------------------------------

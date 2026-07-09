@@ -38,6 +38,12 @@ _EMPTY_CONTENT_MIN_DOCS = 3
 # fires. Above one-off transient locks (Spotlight, AV), below a multi-hour silent break.
 _DOC_WRITE_FAILURE_THRESHOLD = 3
 
+# panel_fetch_shortfall fires when at least this many docs were synced in a pass
+# (so tiny incremental syncs can't trip it) but fewer than this fraction of them
+# ended up with a body — the signature of a failing panel/batch fetch.
+_PANEL_SHORTFALL_MIN_DOCS = _EMPTY_CONTENT_MIN_DOCS
+_PANEL_SHORTFALL_RATIO = 0.5
+
 _CACHE_VERSION_RE = re.compile(r"^cache-v(\d+)\.json(\.enc)?$")
 
 
@@ -54,6 +60,8 @@ class SyncObservation:
     documents: list[GranolaDocument] = field(default_factory=list)
     source: str | None = None  # "API", "cache", or None when both failed
     fetched_was_none: bool = False  # both API and cache returned None
+    panels_requested: int = 0  # docs this pass tried to sync
+    panels_recovered: int = 0  # of those, how many ended up with a body
 
 
 class HealthMonitor:
@@ -130,6 +138,7 @@ class HealthMonitor:
             self._check_both_fetch_paths_failed,
             self._check_zero_docs_regression,
             self._check_all_empty_content,
+            self._check_panel_fetch_shortfall,
         ):
             a = check(observation)
             if a:
@@ -277,6 +286,27 @@ class HealthMonitor:
                 f"All {len(obs.documents)} fetched Granola documents have empty "
                 "panels, notes, and transcript — panel/note format may have "
                 "changed."
+            ),
+        )
+
+    def _check_panel_fetch_shortfall(self, obs: SyncObservation) -> Alert | None:
+        """Catch a near-total panel-fetch failure (bodies missing on most notes).
+
+        Unlike all_empty_content this fires even when a handful of docs still
+        have content (e.g. user-typed notes), which is exactly the case that
+        slips past the "everything is empty" rule.
+        """
+        requested = obs.panels_requested
+        if requested < _PANEL_SHORTFALL_MIN_DOCS:
+            return None
+        if obs.panels_recovered >= requested * _PANEL_SHORTFALL_RATIO:
+            return None
+        return Alert(
+            rule="panel_fetch_shortfall",
+            message=(
+                f"Only {obs.panels_recovered} of {requested} synced documents got "
+                "note content — Granola's panel/batch API may have changed or hit "
+                "a request limit."
             ),
         )
 

@@ -9,12 +9,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from grimoiresync.cli import main
+from grimoiresync.sync_engine import SyncResult
 
 
 class TestCli:
     @patch("grimoiresync.cli.watch")
     @patch("grimoiresync.cli.SyncState")
-    @patch("grimoiresync.cli.run_sync", return_value=3)
+    @patch("grimoiresync.cli.run_sync", return_value=SyncResult(written=3))
     @patch("grimoiresync.cli.load_config")
     def test_once_mode_prints_count(self, mock_load, mock_run, mock_state_cls, mock_watch, capsys):
         mock_load.return_value = MagicMock()
@@ -72,7 +73,7 @@ class TestCli:
 
     @patch("grimoiresync.cli.watch")
     @patch("grimoiresync.cli.SyncState")
-    @patch("grimoiresync.cli.run_sync", return_value=3)
+    @patch("grimoiresync.cli.run_sync", return_value=SyncResult(written=3))
     @patch("grimoiresync.cli.load_config")
     def test_force_calls_clear(self, mock_load, mock_run, mock_state_cls, mock_watch):
         mock_load.return_value = MagicMock()

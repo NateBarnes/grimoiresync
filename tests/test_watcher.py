@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 from grimoiresync.config import Config
+from grimoiresync.sync_engine import SyncResult
 from grimoiresync.sync_state import SyncState
 from grimoiresync.watcher import _CacheEventHandler, watch
 
@@ -175,6 +176,7 @@ class TestWatch:
         mock_sleep.side_effect = SystemExit  # break the loop immediately
         mock_obs = MagicMock()
         MockObserver.return_value = mock_obs
+        mock_run.return_value = SyncResult()
         with pytest.raises(SystemExit):
             watch(watcher_config, mock_state)
         mock_run.assert_called_once_with(watcher_config, mock_state, dry_run=False)
@@ -187,6 +189,7 @@ class TestWatch:
         mock_sleep.side_effect = SystemExit
         mock_obs = MagicMock()
         MockObserver.return_value = mock_obs
+        mock_run.return_value = SyncResult()
         with pytest.raises(SystemExit):
             watch(watcher_config, mock_state)
         mock_obs.start.assert_called_once()
@@ -201,6 +204,7 @@ class TestWatch:
         mock_sleep.side_effect = SystemExit
         mock_obs = MagicMock()
         MockObserver.return_value = mock_obs
+        mock_run.return_value = SyncResult()
         with pytest.raises(SystemExit):
             watch(watcher_config, mock_state)
         sig_calls = [c[0][0] for c in mock_signal.call_args_list]
@@ -222,6 +226,7 @@ class TestWatch:
         mock_signal.side_effect = capture_signal
         mock_obs = MagicMock()
         MockObserver.return_value = mock_obs
+        mock_run.return_value = SyncResult()
 
         # Make sleep check stop_event so loop exits after signal
         call_count = 0
@@ -245,6 +250,7 @@ class TestWatch:
         mock_sleep.side_effect = SystemExit
         mock_obs = MagicMock()
         MockObserver.return_value = mock_obs
+        mock_run.return_value = SyncResult()
         with pytest.raises(SystemExit):
             watch(watcher_config, mock_state, dry_run=True)
         mock_run.assert_called_once_with(watcher_config, mock_state, dry_run=True)
